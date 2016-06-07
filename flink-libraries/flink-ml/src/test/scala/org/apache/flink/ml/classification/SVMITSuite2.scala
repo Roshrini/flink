@@ -24,7 +24,7 @@ import org.apache.flink.ml.math.DenseVector
 import org.apache.flink.api.scala._
 import org.apache.flink.test.util.FlinkTestBase
 
-class SVMITSuite extends FlatSpec with Matchers with FlinkTestBase {
+class SVMITSuite2 extends FlatSpec with Matchers with FlinkTestBase {
 
   behavior of "The SVM using CoCoA implementation"
 
@@ -32,12 +32,12 @@ class SVMITSuite extends FlatSpec with Matchers with FlinkTestBase {
     val env = ExecutionEnvironment.getExecutionEnvironment
 
     val svm = SVM().
-    setBlocks(env.getParallelism).
-    setIterations(100).
-    setLocalIterations(100).
-    setRegularization(0.002).
-    setStepsize(0.1).
-    setSeed(0)
+      setBlocks(env.getParallelism).
+      setIterations(100).
+      setLocalIterations(100).
+      setRegularization(0.002).
+      setStepsize(0.1).
+      setSeed(0)
 
     val trainingDS = env.fromCollection(Classification.trainingData)
     svm.fit(trainingDS)
@@ -64,8 +64,6 @@ class SVMITSuite extends FlatSpec with Matchers with FlinkTestBase {
     val trainingDS = env.fromCollection(Classification.trainingData)
 
     val test = trainingDS.map(x => (x.vector, x.label))
-
-    println("I'm a squirrel")
 
     svm.fit(trainingDS)
 
