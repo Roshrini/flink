@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.ml.feature_extraction
+package org.apache.flink.ml.feature
 
 import org.apache.flink.api.scala._
 import org.apache.flink.ml.common.{LabeledVector, ParameterMap}
@@ -52,8 +52,8 @@ class CountVectorizer extends Transformer[CountVectorizer] {
     this
   }
 
-  def setMinTF(minTF: Double): CountVectorizer =  {
-    parameters.add(MinTF, minTF)
+  def setMaxDF(maxDF: Double): CountVectorizer =  {
+    parameters.add(MaxDF, maxDF)
     this
   }
 
@@ -96,8 +96,8 @@ object CountVectorizer {
   case object MinDF extends Parameter[Double] {
     val defaultValue = Some(1.0)
   }
-  case object MinTF extends Parameter[Double] {
-    val defaultValue = Some(1.0)
+  case object MaxDF extends Parameter[Double] {
+    val defaultValue = Some(1111111111111.0)
   }
   case object StopWords extends Parameter[List[String]] {
     val defaultValue: Option[List[String]] = None
@@ -128,6 +128,10 @@ object CountVectorizer {
         case Some(value) => value
         case None => input.getParallelism
       }
+      val maxDF = resultingParameters.get(MaxDF) match {
+        case Some(value) => value
+        case None => input.getParallelism
+      }
       val stopWords: List[String] = resultingParameters.get(StopWords) match {
         case Some(value) => value
         case None => List[String]()
@@ -138,7 +142,7 @@ object CountVectorizer {
         case None => List[Int]()
       }
 
-      val result = trainDictionary(input,minDF,stopWords, nGramRange)
+      val result = trainDictionary(input,minDF,maxDF,stopWords, nGramRange)
       instance.dictionary = Some(result)
     }
   }
@@ -148,6 +152,10 @@ object CountVectorizer {
       (Double, String)]): Unit = {
       val resultingParameters = instance.parameters ++ fitParameters
       val minDF = resultingParameters.get(MinDF) match {
+        case Some(value) => value
+        case None => input.getParallelism
+      }
+      val maxDF = resultingParameters.get(MaxDF) match {
         case Some(value) => value
         case None => input.getParallelism
       }
@@ -163,7 +171,7 @@ object CountVectorizer {
       }
 
       val strippedInput = input.map(x => x._2)
-      instance.dictionary = Some(trainDictionary(strippedInput,minDF,stopWords,nGramRange ))
+      instance.dictionary = Some(trainDictionary(strippedInput,minDF,maxDF,stopWords,nGramRange ))
 
     }
   }
@@ -179,13 +187,13 @@ object CountVectorizer {
     return output
   }
 
-  private def trainDictionary(input: DataSet[String], minDF: Double, stopWords: List[String], nGramRange: List[Int]): DataSet[Map[String, Int]] = {
+  private def trainDictionary(input: DataSet[String], minDF: Double, maxDF: Double, stopWords: List[String], nGramRange: List[Int]): DataSet[Map[String, Int]] = {
     val result = input.flatMap {
       text => {
-        (for( i <- nGramRange(0) to nGramRange(1)) yield
-        """\b\w+\b""".r.findAllIn(text).map(x => new Tuple1(x.toLowerCase)).filter(w => w._1.length > minDF)
-          .filter(w => !stopWords.contains(w._1)).sliding(i).toList.map(x => concatenate(x,i))).flatMap(x => x)
-          .map(x => new Tuple1(x))
+        (for( i <- start to end) yield
+        """\b\w+\b""".r.findAllIn(text).map(x => new Tuple1(x.toLowerCase)).filter(w => w._1.length > minDF && w._1.length < maxDF)
+          .filter(w => !stopWords.contains(w._1)).sliding(i).toList
+          .map(x => concatenate(x,i))).flatMap(x => x).map(x => new Tuple1(x))
 
 //          """\b\w+\b""".r.findAllIn(text).map(x => new Tuple1(x.toLowerCase)).filter(w => w._1.length > minDF)
 //          .filter(w => !stopWords.contains(w._1)).sliding(2).toList.map(x => x(0)._1+" "+x(1)._1).map(x => new Tuple1(x))
@@ -218,8 +226,6 @@ object CountVectorizer {
 
   override def getModel(instance: CountVectorizer, transformParemters: ParameterMap):
   DataSet[Map[String, Int]] = {
-  // println("r", instance.start )
-    //  println(instance.end )
     start = instance.start
     end = instance.end
 
