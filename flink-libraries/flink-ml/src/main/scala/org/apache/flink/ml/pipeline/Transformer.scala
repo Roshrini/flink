@@ -161,4 +161,5 @@ trait TransformOperation[Instance, Model, Input, Output] extends Serializable{
     * @return
     */
   def transform(element: Input, model: Model): Output
+
 }
