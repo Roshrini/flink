@@ -32,39 +32,30 @@ class CountVectorizer extends Transformer[CountVectorizer] {
   var start = 1
   var end = 1
 
-  def setInputCol(inputCol: String): CountVectorizer =  {
-    parameters.add(InputCol, inputCol)
-    this
-  }
-
-  def setOutputCol(outputCol: String): CountVectorizer =  {
-    parameters.add(OutputCol, outputCol)
-    this
-  }
-
-  def setVocabSize(vocabSize: Int): CountVectorizer =  {
-    parameters.add(VocabSize, vocabSize)
-    this
-  }
-
   def setMinDF(minDF: Double): CountVectorizer =  {
+    require(minDF > 0, "minDF must be positive.")
     parameters.add(MinDF, minDF)
     this
   }
 
   def setMaxDF(maxDF: Double): CountVectorizer =  {
+    require(maxDF > 0, "maxDF must be positive.")
     parameters.add(MaxDF, maxDF)
     this
   }
 
   def setStopWords(stopWords: List[String]): CountVectorizer =  {
+    require(stopWords.isInstanceOf[List[String]] , "Stop words list should be provided as a list of Strings")
     parameters.add(StopWords, stopWords)
     this
   }
 
   def setNgramRange(ngramRange: List[Int]): CountVectorizer =  {
+    require(ngramRange.isInstanceOf[List[Int]] , "nGram Range should be provided as a list of Int")
+    require(ngramRange.head > 0, "Range must be positive.")
+    require(ngramRange(1) > 0, "Range must be positive.")
     parameters.add(NgramRange, ngramRange)
-    this.start = ngramRange(0)
+    this.start = ngramRange.head
     this.end = ngramRange(1)
     this
   }
@@ -80,19 +71,9 @@ class CountVectorizer extends Transformer[CountVectorizer] {
 object CountVectorizer {
 
   import org.apache.flink.ml.common.Parameter
-  // ========================================== Parameters =========================================
 
-  case object InputCol extends Parameter[String] {
-    val defaultValue: Option[String] = None
-  }
+  // ========================================== Parameters ===========================================
 
-  case object OutputCol extends Parameter[String] {
-    val defaultValue: Option[String] = None
-  }
-
-  case object VocabSize extends Parameter[Int] {
-    val defaultValue = Some(10)
-  }
   case object MinDF extends Parameter[Double] {
     val defaultValue = Some(1.0)
   }
@@ -107,6 +88,7 @@ object CountVectorizer {
   }
   var start =1
   var end =1
+
   // ========================================== Factory methods ====================================
 
   def apply(): CountVectorizer = {
@@ -176,42 +158,6 @@ object CountVectorizer {
     }
   }
 
-
-  private def concatenate(input : Seq[Tuple1[String]], n : Int) : String = {
-    var str = ""
-    for(i <- 0 to n-1)
-    {
-      str = str + input(i)._1+" "
-    }
-    val output = str.reverse.dropWhile(_ == ' ').reverse
-    return output
-  }
-
-  private def trainDictionary(input: DataSet[String], minDF: Double, maxDF: Double, stopWords: List[String], nGramRange: List[Int]): DataSet[Map[String, Int]] = {
-    val result = input.flatMap {
-      text => {
-        (for( i <- start to end) yield
-        """\b\w+\b""".r.findAllIn(text).map(x => new Tuple1(x.toLowerCase)).filter(w => w._1.length > minDF && w._1.length < maxDF)
-          .filter(w => !stopWords.contains(w._1)).sliding(i).toList
-          .map(x => concatenate(x,i))).flatMap(x => x).map(x => new Tuple1(x))
-
-//          """\b\w+\b""".r.findAllIn(text).map(x => new Tuple1(x.toLowerCase)).filter(w => w._1.length > minDF)
-//          .filter(w => !stopWords.contains(w._1)).sliding(2).toList.map(x => x(0)._1+" "+x(1)._1).map(x => new Tuple1(x))
-      }
-    }.distinct(0)
-      .reduceGroup{
-        (words, coll: Collector[Map[String, Int]]) => {
-          val set = scala.collection.mutable.HashSet[String]()
-          words.foreach {
-              word =>
-               set += word._1
-          }
-          coll.collect(set.iterator.zipWithIndex.toMap)
-        }
-      }
-    result
-  }
-
   implicit val transformText = new TransformOperation[
     CountVectorizer,
     Map[String, Int],
@@ -219,8 +165,8 @@ object CountVectorizer {
     SparseVector]
   {/** Retrieves the model of the [[Transformer]] for which this operation has been defined.
     *
-    * @param instance
-    * @param transformParemters
+    * @param instance Countvectorizer object
+    * @param transformParemters transformer parameters
     * @return
     */
 
@@ -237,15 +183,14 @@ object CountVectorizer {
     /** Transforms a single element with respect to the model associated with the respective
       * [[Transformer]]
       *
-      * @param element
-      * @param model
+      * @param element single element
+      * @param model fitted model
       * @return
       */
 
     override def transform(element: String, model: Map[String, Int]): SparseVector = {
       transformTextElement(element, model)
     }
-
   }
 
   implicit val transformLabeledText = new TransformOperation[
@@ -256,8 +201,8 @@ object CountVectorizer {
   {/** Retrieves the model of the [[Transformer]] for which this operation has
     * been defined.
     *
-    * @param instance
-    * @param transformParemters
+    * @param instance Countvectorizer object
+    * @param transformParemters transformer parameters
     * @return
     */
   override def getModel(instance: CountVectorizer, transformParemters: ParameterMap):
@@ -271,13 +216,47 @@ object CountVectorizer {
     /** Transforms a single element with respect to the model associated with the respective
       * [[Transformer]]
       *
-      * @param element
-      * @param model
+      * @param element single element
+      * @param model fitted model
       * @return
       */
     override def transform(element: (Double, String), model: Map[String, Int]): LabeledVector = {
       LabeledVector(element._1, transformTextElement(element._2, model ))
     }
+  }
+
+  // ========================================== Helper Functions =========================================
+
+  private def concatenate(input : Seq[Tuple1[String]], n : Int) : String = {
+    var str = ""
+    for(i <- 0 until n)
+    {
+      str = str + input(i)._1+" "
+    }
+    val output = str.reverse.dropWhile(_ == ' ').reverse
+    output
+  }
+
+  private def trainDictionary(input: DataSet[String], minDF: Double, maxDF: Double, stopWords: List[String], nGramRange: List[Int]): DataSet[Map[String, Int]] = {
+    val result = input.flatMap {
+      text => {
+        (for( i <- start to end) yield
+          """\b\w+\b""".r.findAllIn(text).map(x => new Tuple1(x.toLowerCase)).filter(w => w._1.length > minDF && w._1.length < maxDF)
+            .filter(w => !stopWords.contains(w._1)).sliding(i).toList
+            .map(x => concatenate(x,i))).flatMap(x => x).map(x => new Tuple1(x))
+      }
+    }.distinct(0)
+      .reduceGroup{
+        (words, coll: Collector[Map[String, Int]]) => {
+          val set = scala.collection.mutable.HashSet[String]()
+          words.foreach {
+            word =>
+              set += word._1
+          }
+          coll.collect(set.iterator.zipWithIndex.toMap)
+        }
+      }
+    result
   }
 
   private def transformTextElement(text: String, model: Map[String, Int]): SparseVector = {
@@ -290,6 +269,6 @@ object CountVectorizer {
         }
       }
     }
-    SparseVector.fromCOO(model.size, coo.toIterable)
+    SparseVector.fromCOO(model.size, coo)
   }
 }
